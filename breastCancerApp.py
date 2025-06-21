@@ -10,11 +10,12 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # SHAP fallback
+SHAP_AVAILABLE = False
 try:
     import shap
     SHAP_AVAILABLE = True
 except ImportError:
-    SHAP_AVAILABLE = False
+    pass
 
 # Page settings
 st.set_page_config(page_title="Breast Cancer Predictor", layout="centered")
