@@ -1,125 +1,94 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import seaborn as sns
+import joblib
+import shap
 import matplotlib.pyplot as plt
-from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.decomposition import PCA
-from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.metrics import confusion_matrix, accuracy_score, classification_report, roc_curve, auc
+import seaborn as sns
+from sklearn.metrics import confusion_matrix
+import warnings
+warnings.filterwarnings('ignore')
 
-# Load dataset
+# Page settings
+st.set_page_config(page_title="Breast Cancer Predictor", layout="centered")
+
+# Title
+st.title("Breast Cancer Predictor")
+st.markdown("Predict if a tumor is **Benign** or **Malignant** using different ML models.")
+
+# Load model options
+model_options = {
+    "Random Forest": "random_forest_model.pkl",
+    "Logistic Regression": "logistic_regression_model.pkl",
+    "SVM": "svm_model.pkl",
+    "KNN": "knn_model.pkl",
+    "XGBoost": "xgboost_model.pkl"
+}
+
+model_choice = st.sidebar.selectbox("Choose Classifier", list(model_options.keys()))
+
+# Load model
+@st.cache_resource
+def load_model(path):
+    return joblib.load(path)
+
+model = load_model(model_options[model_choice])
+
+# Load data for SHAP and CM
 @st.cache_data
 def load_data():
-    data = pd.read_csv("wisconsin.csv")
-    data.drop("id", axis=1, inplace=True)
-    return data
+    df = pd.read_csv("wisconsin.csv")
+    df = df.drop(columns=["id", "Unnamed: 32"], errors="ignore")
+    df["diagnosis"] = df["diagnosis"].map({"M": 0, "B": 1})  # 0 = Malignant, 1 = Benign
+    X = df.drop(columns=["diagnosis"])
+    y = df["diagnosis"]
+    return X, y
 
-data = load_data()
-mean_cols = [col for col in data.columns if col.endswith('_mean')]
-X = data[mean_cols]
-y = data['diagnosis']
-label_encoder = LabelEncoder()
-y = label_encoder.fit_transform(y)
+X_data, y_data = load_data()
 
-# Standardization and PCA
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X)
-pca = PCA(n_components=10)
-X_pca = pca.fit_transform(X_scaled)
+# Input sliders
+st.sidebar.subheader("Input Features")
+input_dict = {
+    "mean radius": st.sidebar.slider("Mean Radius", 5.0, 30.0, 14.0),
+    "mean texture": st.sidebar.slider("Mean Texture", 5.0, 40.0, 20.0),
+    "mean perimeter": st.sidebar.slider("Mean Perimeter", 30.0, 200.0, 90.0),
+    "mean area": st.sidebar.slider("Mean Area", 100.0, 2500.0, 500.0),
+    "mean smoothness": st.sidebar.slider("Mean Smoothness", 0.05, 0.2, 0.1),
+    "mean concavity": st.sidebar.slider("Mean Concavity", 0.0, 0.5, 0.1),
+    "mean concave points": st.sidebar.slider("Mean Concave Points", 0.0, 0.2, 0.05),
+    "worst radius": st.sidebar.slider("Worst Radius", 7.0, 40.0, 16.0),
+    "worst texture": st.sidebar.slider("Worst Texture", 10.0, 50.0, 25.0),
+    "worst perimeter": st.sidebar.slider("Worst Perimeter", 50.0, 250.0, 100.0),
+}
 
-# Train models
-knn = KNeighborsClassifier(n_neighbors=5)
-knn.fit(X_scaled, y)
-dt = DecisionTreeClassifier()
-dt.fit(X_scaled, y)
+input_df = pd.DataFrame([input_dict])
 
-# App layout
-st.title("Breast Cancer Diagnosis Predictor")
-st.write("This app predicts whether a tumor is **Benign** or **Malignant** based on input features using K-NN or Decision Tree Classifier.")
+# Predict
+prediction = model.predict(input_df)[0]
+proba = model.predict_proba(input_df)[0]
 
-# Model selection
-model_choice = st.sidebar.selectbox("Choose Classifier", ["K-Nearest Neighbors", "Decision Tree"])
-user_input = {}
-for col in mean_cols:
-    user_input[col] = st.sidebar.slider(col, float(data[col].min()), float(data[col].max()), float(data[col].mean()))
+st.subheader("🩺 Prediction Result")
+st.success(f"**{'Benign' if prediction == 1 else 'Malignant'}** with {max(proba)*100:.2f}% confidence.")
 
-input_df = pd.DataFrame([user_input])
-input_scaled = scaler.transform(input_df)
-
-# Prediction
-if st.sidebar.button("Predict"):
-    if model_choice == "K-Nearest Neighbors":
-        model = knn
-    else:
-        model = dt
-
-    pred = model.predict(input_scaled)[0]
-    prob = model.predict_proba(input_scaled)[0][1] if hasattr(model, "predict_proba") else None
-
-    st.subheader("Prediction")
-    st.write("Prediction:", "**Malignant**" if pred == 1 else "**Benign**")
-    if prob is not None:
-        st.write("Probability of Malignant:", round(prob, 2))
-
-    # Classification report
-    y_pred = model.predict(X_scaled)
-    report = classification_report(y, y_pred, target_names=['Benign', 'Malignant'], output_dict=True)
-    st.subheader("Classification Report")
-    st.dataframe(pd.DataFrame(report).transpose())
-
-    # Confusion matrix
-    conf_mat = confusion_matrix(y, y_pred)
-    st.subheader("Confusion Matrix")
-    st.write(conf_mat)
-
-    # ROC Curve
-    if hasattr(model, "predict_proba"):
-        probs = model.predict_proba(X_scaled)[:, 1]
-        fpr, tpr, _ = roc_curve(y, probs)
-        auc_score = auc(fpr, tpr)
-        fig, ax = plt.subplots()
-        ax.plot(fpr, tpr, label=f'{model_choice} (AUC = {auc_score:.2f})')
-        ax.plot([0, 1], [0, 1], 'k--')
-        ax.set_xlabel('False Positive Rate')
-        ax.set_ylabel('True Positive Rate')
-        ax.set_title('ROC Curve')
-        ax.legend()
-        st.pyplot(fig)
-
-# Expandable sections
-with st.expander("Dataset Overview"):
-    st.dataframe(data.head())
-
-with st.expander("PCA Analysis"):
-    explained_var = pca.explained_variance_ratio_
-    cumulative_explained_variance = np.cumsum(explained_var)
-    st.line_chart(cumulative_explained_variance)
+# Confusion Matrix
+if st.checkbox("Show Confusion Matrix"):
+    y_pred = model.predict(X_data)
+    cm = confusion_matrix(y_data, y_pred)
     fig, ax = plt.subplots()
-    scatter = ax.scatter(X_pca[:, 0], X_pca[:, 1], c=y, cmap='viridis', alpha=0.7)
-    ax.set_xlabel("Principal Component 1")
-    ax.set_ylabel("Principal Component 2")
-    ax.set_title("PCA Projection (2D)")
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=["Malignant", "Benign"], yticklabels=["Malignant", "Benign"])
+    plt.xlabel("Predicted")
+    plt.ylabel("Actual")
     st.pyplot(fig)
 
-with st.expander(" KNN Tuning: Error Rate vs K"):
-    error_rates = []
-    for k in range(1, 21):
-        model_k = KNeighborsClassifier(n_neighbors=k)
-        scores = cross_val_score(model_k, X_scaled, y, cv=5)
-        error_rates.append(1 - scores.mean())
-    fig, ax = plt.subplots()
-    ax.plot(range(1, 21), error_rates, marker='o')
-    ax.set_xlabel("K")
-    ax.set_ylabel("Misclassification Error")
-    ax.set_title("Error Rate vs K")
-    st.pyplot(fig)
 
-with st.expander("Project Reflection"):
-    st.markdown("""
-    **Reflection:**  
-    Both the K-NN and Decision Tree classifiers performed well, with K-NN slightly outperforming in accuracy. However, after evaluating precision, recall, and F1-score using the classification report, K-NN also demonstrated better balance in correctly identifying malignant cases with fewer false negatives—critical in a medical setting.  
-    The ROC curve comparison further validated this, showing a higher AUC for K-NN. These robustness metrics show that K-NN not only performs better on average but is also more reliable in sensitive healthcare diagnostics.
-    """)
+if st.checkbox("Show SHAP Feature Importance"):
+    try:
+        explainer = shap.Explainer(model, X_data)
+        shap_values = explainer(X_data)
+        st.set_option('deprecation.showPyplotGlobalUse', False)
+        shap.summary_plot(shap_values, X_data)
+        st.pyplot(bbox_inches="tight")
+    except Exception as e:
+        st.warning("SHAP not supported for this model.")
+
+st.markdown("---")
