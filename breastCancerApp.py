@@ -9,14 +9,6 @@ import warnings
 
 warnings.filterwarnings('ignore')
 
-# SHAP fallback
-SHAP_AVAILABLE = False
-try:
-    import shap
-    SHAP_AVAILABLE = True
-except ImportError:
-    pass
-
 # Page settings
 st.set_page_config(page_title="Breast Cancer Predictor", layout="centered")
 
@@ -42,7 +34,7 @@ def load_model(path):
 
 model = load_model(model_options[model_choice])
 
-# Load data for SHAP and CM
+# Load data
 @st.cache_data
 def load_data():
     df = pd.read_csv("wisconsin.csv")
@@ -54,7 +46,7 @@ def load_data():
 
 X_data, y_data = load_data()
 
-# Input sliders
+# Sidebar input
 st.sidebar.subheader("Input Features")
 input_dict = {
     "mean radius": st.sidebar.slider("Mean Radius", 5.0, 30.0, 14.0),
@@ -83,22 +75,11 @@ if st.checkbox("Show Confusion Matrix"):
     y_pred = model.predict(X_data)
     cm = confusion_matrix(y_data, y_pred)
     fig, ax = plt.subplots()
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=["Malignant", "Benign"], yticklabels=["Malignant", "Benign"])
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+                xticklabels=["Malignant", "Benign"],
+                yticklabels=["Malignant", "Benign"])
     plt.xlabel("Predicted")
     plt.ylabel("Actual")
     st.pyplot(fig)
-
-# SHAP with fallback
-if SHAP_AVAILABLE and st.checkbox("Show SHAP Feature Importance"):
-    try:
-        explainer = shap.Explainer(model, X_data)
-        shap_values = explainer(X_data)
-        st.set_option('deprecation.showPyplotGlobalUse', False)
-        shap.summary_plot(shap_values, X_data, show=False)
-        st.pyplot(bbox_inches="tight")
-    except Exception as e:
-        st.warning("SHAP could not be generated for this model.")
-elif not SHAP_AVAILABLE and st.checkbox("Show SHAP Feature Importance"):
-    st.warning("SHAP is not available in this environment. It has been skipped to avoid deployment failure.")
 
 st.markdown("---")
