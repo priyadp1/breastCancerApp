@@ -75,7 +75,7 @@ input_df = pd.DataFrame([input_dict])
 prediction = model.predict(input_df)[0]
 proba = model.predict_proba(input_df)[0]
 
-st.subheader("🩺 Prediction Result")
+st.subheader("Prediction Result")
 st.success(f"**{'Benign' if prediction == 1 else 'Malignant'}** with {max(proba)*100:.2f}% confidence.")
 
 # Confusion Matrix
