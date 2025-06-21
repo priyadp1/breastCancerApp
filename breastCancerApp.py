@@ -2,12 +2,19 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import joblib
-import shap
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix
 import warnings
+
 warnings.filterwarnings('ignore')
+
+# SHAP fallback
+try:
+    import shap
+    SHAP_AVAILABLE = True
+except ImportError:
+    SHAP_AVAILABLE = False
 
 # Page settings
 st.set_page_config(page_title="Breast Cancer Predictor", layout="centered")
@@ -80,15 +87,17 @@ if st.checkbox("Show Confusion Matrix"):
     plt.ylabel("Actual")
     st.pyplot(fig)
 
-
-if st.checkbox("Show SHAP Feature Importance"):
+# SHAP with fallback
+if SHAP_AVAILABLE and st.checkbox("Show SHAP Feature Importance"):
     try:
         explainer = shap.Explainer(model, X_data)
         shap_values = explainer(X_data)
         st.set_option('deprecation.showPyplotGlobalUse', False)
-        shap.summary_plot(shap_values, X_data)
+        shap.summary_plot(shap_values, X_data, show=False)
         st.pyplot(bbox_inches="tight")
     except Exception as e:
-        st.warning("SHAP not supported for this model.")
+        st.warning("SHAP could not be generated for this model.")
+elif not SHAP_AVAILABLE and st.checkbox("Show SHAP Feature Importance"):
+    st.warning("SHAP is not available in this environment. It has been skipped to avoid deployment failure.")
 
 st.markdown("---")
