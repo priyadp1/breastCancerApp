@@ -3,3 +3,4 @@ joblib
 scikit-learn==1.6.1
 numpy==1.23.5
 xgboost==1.7.6
+setuptools>=65.5.0
